@@ -7,10 +7,11 @@ import copy
 import frappe
 from frappe import _
 from frappe.query_builder.functions import IfNull, Sum
-from frappe.utils import flt, getdate
+from frappe.utils import date_diff, flt, getdate, nowdate
 
 import erpnext
 from erpnext.accounts.report.utils import validate_date_range
+from erpnext.selling.report.sales_order_analysis.sales_order_analysis import least_delay
 from erpnext.stock.doctype.purchase_receipt.services.billing_status import (
 	get_invoiced_qty_against_po_items,
 )
@@ -66,6 +67,7 @@ def get_data(filters):
 		.select(
 			po.transaction_date.as_("date"),
 			po_item.schedule_date.as_("required_date"),
+			po_item.expected_delivery_date,
 			po_item.project,
 			po.name.as_("purchase_order"),
 			po.status,
@@ -173,6 +175,8 @@ def prepare_data(data, filters):
 		if row["status"] == "Closed":
 			row.update(pending_qty=0, qty_to_bill=0, pending_amount=0)
 
+		row["delay"] = get_delay(row)
+
 		completed += row["billed_amount"]
 		pending += row["pending_amount"]
 
@@ -186,6 +190,15 @@ def prepare_data(data, filters):
 	return data, chart_data
 
 
+def get_delay(row):
+	"""Days past the supplier's expected delivery date (Required By when it is not set)."""
+	if flt(row["pending_qty"]) <= 0:
+		return 0
+
+	delivery_date = row.get("expected_delivery_date") or row["required_date"]
+	return max(date_diff(nowdate(), delivery_date), 0)
+
+
 def group_by_purchase_order(data):
 	purchase_order_map = {}
 
@@ -196,6 +209,10 @@ def group_by_purchase_order(data):
 			continue
 
 		group["required_date"] = min(getdate(group["required_date"]), getdate(row["required_date"]))
+		group["expected_delivery_date"] = min(
+			filter(None, [group["expected_delivery_date"], row["expected_delivery_date"]]), default=None
+		)
+		group["delay"] = least_delay(group["delay"], row["delay"])
 		add_aggregated_fields(group, row)
 
 	return list(purchase_order_map.values())
@@ -263,6 +280,13 @@ def get_purchase_order_columns():
 	return [
 		{"label": _("Date"), "fieldname": "date", "fieldtype": "Date", "width": 90},
 		{"label": _("Required By"), "fieldname": "required_date", "fieldtype": "Date", "width": 90},
+		{
+			"label": _("Expected Delivery Date"),
+			"fieldname": "expected_delivery_date",
+			"fieldtype": "Date",
+			"width": 120,
+		},
+		{"label": _("Delay (in Days)"), "fieldname": "delay", "fieldtype": "Int", "width": 100},
 		{
 			"label": _("Purchase Order"),
 			"fieldname": "purchase_order",

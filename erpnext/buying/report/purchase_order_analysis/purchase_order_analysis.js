@@ -124,6 +124,10 @@ frappe.query_reports["Purchase Order Analysis"] = {
 		if (format_fields.includes(column.fieldname) && data && data[column.fieldname] > 0) {
 			value = "<span style='color:green'>" + value + "</span>";
 		}
+
+		if (column.fieldname == "delay" && data && data[column.fieldname] > 0) {
+			value = "<span style='color:red'>" + value + "</span>";
+		}
 		return value;
 	},
 };
