@@ -1099,21 +1099,27 @@ erpnext.taxes_and_totals = class TaxesAndTotals extends erpnext.payments {
 		}
 
 		doc.taxes.forEach((tax) => {
+			let actual_tax_amount = 0;
+
 			if (["Actual", "On Item Quantity"].includes(tax.charge_type)) {
-				update_actual_taxes_dict(tax, tax.tax_amount);
-				return;
+				actual_tax_amount = tax.tax_amount;
+			} else if (
+				["On Previous Row Amount", "On Previous Row Total"].includes(tax.charge_type) &&
+				tax.row_id
+			) {
+				const base_row = actual_taxes_dict[tax.row_id] || {};
+				// if charge type is 'On Previous Row Amount', calculate tax on previous row amount
+				// else (On Previous Row Total) calculate tax on cumulative total
+				const base_tax_amount =
+					tax.charge_type == "On Previous Row Amount"
+						? base_row["tax_amount"] || 0
+						: base_row["cumulative_total"] || 0;
+				actual_tax_amount = (base_tax_amount * tax.rate) / 100;
 			}
 
-			const base_row = actual_taxes_dict[tax.row_id];
-			if (!base_row) return;
-
-			// if charge type is 'On Previous Row Amount', calculate tax on previous row amount
-			// else (On Previous Row Total) calculate tax on cumulative total
-			const base_tax_amount =
-				tax.charge_type == "On Previous Row Amount"
-					? base_row["tax_amount"]
-					: base_row["cumulative_total"];
-			update_actual_taxes_dict(tax, (base_tax_amount * tax.rate) / 100);
+			// record every row (On Net Total with 0), so that a later "On Previous Row Total"
+			// row can see the Actual amount already inside this row's running total
+			update_actual_taxes_dict(tax, actual_tax_amount);
 		});
 
 		return (this.grand_total_for_distributing_discount || doc.grand_total) - total_actual_tax;

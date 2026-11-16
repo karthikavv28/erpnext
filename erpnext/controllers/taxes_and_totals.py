@@ -1151,22 +1151,22 @@ class calculate_taxes_and_totals:
 
 		for tax in doc.taxes:
 			if tax.charge_type in ["Actual", "On Item Quantity"]:
-				update_actual_tax_dict(tax, tax.tax_amount)
-				continue
+				actual_tax_amount = tax.tax_amount
+			elif tax.charge_type in ["On Previous Row Amount", "On Previous Row Total"] and tax.row_id:
+				base_row = actual_taxes_dict.get(int(tax.row_id), {})
+				base_tax_amount = (
+					base_row.get("tax_amount", 0)
+					if tax.charge_type == "On Previous Row Amount"
+					else base_row.get("cumulative_tax_amount", 0)
+				)
+				actual_tax_amount = base_tax_amount * tax.rate / 100
+			else:
+				# On Net Total: this row's own amount has no Actual part
+				actual_tax_amount = 0
 
-			if not tax.row_id:
-				continue
-
-			base_row = actual_taxes_dict.get(int(tax.row_id))
-			if not base_row:
-				continue
-
-			base_tax_amount = (
-				base_row["tax_amount"]
-				if tax.charge_type == "On Previous Row Amount"
-				else base_row["cumulative_tax_amount"]
-			)
-			update_actual_tax_dict(tax, base_tax_amount * tax.rate / 100)
+			# record every row, so that a later "On Previous Row Total" row can see
+			# the Actual amount already inside this row's running total
+			update_actual_tax_dict(tax, actual_tax_amount)
 
 		return getattr(self, "grand_total_for_distributing_discount", doc.grand_total) - total_actual_tax
 

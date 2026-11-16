@@ -437,6 +437,40 @@ class TestSalesInvoice(ERPNextTestSuite):
 		self.assertEqual(si.net_total, 3859.65)
 		self.assertEqual(si.grand_total, 4900.00)
 
+	def test_grand_total_discount_with_actual_charge_under_previous_row_total(self):
+		# row 3 charges 10% on row 2's running total, which holds the Actual 100 of row 1: that 10 does
+		# not change with the discount, so it must stay out of the base the discount is spread over
+		si = create_sales_invoice(rate=1000, price_list_rate=1000, do_not_save=True)
+		si.disable_rounded_total = 1
+		si.apply_discount_on = "Grand Total"
+		si.discount_amount = 132
+		for tax in (
+			{
+				"charge_type": "Actual",
+				"account_head": "_Test Account Shipping Charges - _TC",
+				"tax_amount": 100,
+			},
+			{"charge_type": "On Net Total", "account_head": "_Test Account Service Tax - _TC", "rate": 10},
+			{
+				"charge_type": "On Previous Row Total",
+				"account_head": "_Test Account VAT - _TC",
+				"rate": 10,
+				"row_id": 2,
+			},
+		):
+			si.append(
+				"taxes", {**tax, "description": tax["account_head"], "cost_center": "_Test Cost Center - _TC"}
+			)
+		si.insert()
+
+		self.assertEqual(si.net_total, 890.91)
+		self.assertEqual([tax.tax_amount_after_discount_amount for tax in si.taxes], [100, 89.09, 108])
+		self.assertEqual(si.grand_total, 1188)
+		self.assertEqual(flt(si.net_total + si.total_taxes_and_charges, 2), si.grand_total)
+
+		# fails with "Debit and Credit not equal" when the rows and the grand total disagree
+		si.submit()
+
 	@ERPNextTestSuite.change_settings(
 		"System Settings",
 		{"number_format": "#,###.##", "currency_precision": 2, "rounding_method": "Commercial Rounding"},
