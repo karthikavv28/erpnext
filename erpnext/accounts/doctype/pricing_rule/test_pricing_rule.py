@@ -2340,6 +2340,34 @@ class TestPricingRule(ERPNextTestSuite):
 		details = remove_pricing_rule_for_item(rule.name, frappe.as_json(item_details))
 		self.assertTrue(details.pricing_rule_removed)
 
+	def test_remove_free_item_of_same_item_rule(self):
+		from erpnext.accounts.doctype.pricing_rule.pricing_rule import remove_pricing_rule_for_item
+
+		item_details = frappe.as_json(
+			{"doctype": "Sales Invoice Item", "parenttype": "Sales Invoice", "item_code": "_Test Item"}
+		)
+
+		def get_free_item_to_remove(rule):
+			# the form calls this when the qty changes, to drop the rule and its free row
+			details = remove_pricing_rule_for_item(rule.name, item_details, item_code="_Test Item")
+			return details.get("remove_free_item")
+
+		same_item_rule = make_item_pricing_rule(
+			"_Test Item", price_or_product_discount="Product", min_qty=2, same_item=1, free_qty=1
+		)
+		self.assertFalse(same_item_rule.free_item)
+		self.assertEqual(get_free_item_to_remove(same_item_rule), "_Test Item")
+
+		free_item_rule = make_item_pricing_rule(
+			"_Test Item", price_or_product_discount="Product", min_qty=2, free_item="_Test Item 2", free_qty=1
+		)
+		self.assertEqual(get_free_item_to_remove(free_item_rule), "_Test Item 2")
+
+		# the free row stays when the free item qty is not enforced
+		same_item_rule.dont_enforce_free_item_qty = 1
+		same_item_rule.save()
+		self.assertIsNone(get_free_item_to_remove(same_item_rule))
+
 	def test_saved_pricing_rule_stays_on_submit(self):
 		item = make_item("PR Recheck Item", {"is_stock_item": 0}).name
 		rule = make_item_pricing_rule(item, discount_percentage=10)
