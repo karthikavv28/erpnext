@@ -967,6 +967,34 @@ class TestPOSInvoice(POSInvoiceTestMixin):
 			dict.fromkeys(batch_nos, 9),
 		)
 
+	@ERPNextTestSuite.change_settings("Stock Settings", {"use_serial_batch_fields": 0})
+	def test_pos_return_puts_batch_back_into_the_sold_batch(self):
+		item = make_item(
+			properties={
+				"is_stock_item": 1,
+				"has_batch_no": 1,
+				"create_new_batch": 1,
+				"batch_number_series": "PRB-.#####",
+			}
+		)
+		se = make_stock_entry(target="_Test Warehouse - _TC", item_code=item.name, qty=10, basic_rate=100)
+		batch_no = get_batch_from_bundle(se.items[0].serial_and_batch_bundle)
+
+		pos_inv = create_pos_invoice(item=item.name, batch_no=batch_no, qty=2, rate=100, do_not_save=1)
+		pos_inv.append("payments", {"mode_of_payment": "Cash", "amount": 200, "default": 1})
+		pos_inv.insert().submit()
+
+		# returned in two parts, both go back into the sold batch instead of a new batch
+		for _part in range(2):
+			pos_return = make_sales_return(pos_inv.name)
+			pos_return.items[0].qty = -1
+			pos_return.set("payments", [])
+			pos_return.append("payments", {"mode_of_payment": "Cash", "amount": -100, "default": 1})
+			pos_return.paid_amount = -100
+			pos_return.insert().submit()
+
+			self.assertEqual(get_batch_from_bundle(pos_return.items[0].serial_and_batch_bundle), batch_no)
+
 	def test_pos_batch_item_qty_validation(self):
 		from erpnext.stock.doctype.serial_and_batch_bundle.serial_and_batch_bundle import (
 			BatchNegativeStockError,

@@ -1389,7 +1389,7 @@ def get_serial_batches_based_on_bundle(doctype, field, _bundle_ids):
 
 			key = (row.item_code, key)
 
-		if row.voucher_type in ["Sales Invoice", "Delivery Note"]:
+		if row.voucher_type in ["Sales Invoice", "Delivery Note", "POS Invoice"]:
 			row.qty = -1 * row.qty
 
 		if key not in available_dict:
